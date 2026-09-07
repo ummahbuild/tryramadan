@@ -6,8 +6,9 @@ import { getEffectiveRamadanRange, getRamadanDayNumberInRange } from '@tryramada
 import { fastingGuidance, guidanceNotice } from '@tryramadan/core/guidance';
 
 type Status = 'fasting' | 'completed' | 'not-fasting';
-type Day = { status?: Status; journal?: string };
+type Day = { status?: Status; journal?: string; mealNotes?: string };
 type Records = Record<string, Day>;
+type Tab = 'Today' | 'Journal' | 'Meals' | 'Progress' | 'Quran' | 'Learn' | 'Settings';
 const STORAGE_KEY = 'tryramadan-native-days-v1';
 const todayKey = () => {
   const now = new Date();
@@ -20,18 +21,20 @@ function validRecords(value: unknown): value is Records {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !entry || typeof entry !== 'object') return false;
     const day = entry as Day;
     return (day.status === undefined || ['fasting', 'completed', 'not-fasting'].includes(day.status)) &&
-      (day.journal === undefined || typeof day.journal === 'string');
+      (day.journal === undefined || typeof day.journal === 'string') &&
+      (day.mealNotes === undefined || typeof day.mealNotes === 'string');
   });
 }
 
 export default function App() {
-  const [tab, setTab] = useState<'Today' | 'Journal' | 'Learn'>('Today');
+  const [tab, setTab] = useState<Tab>('Today');
   const [date, setDate] = useState(todayKey);
   const [records, setRecords] = useState<Records>({});
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [mealDrafts, setMealDrafts] = useState<Record<string, string>>({});
   const [journalDate, setJournalDate] = useState(todayKey);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -75,6 +78,9 @@ export default function App() {
   const day = records[date];
   const draft = drafts[journalDate] ?? records[journalDate]?.journal ?? '';
   const completed = Object.values(records).filter((entry) => entry.status === 'completed').length;
+  const fasting = Object.values(records).filter((entry) => entry.status === 'fasting').length;
+  const notFasting = Object.values(records).filter((entry) => entry.status === 'not-fasting').length;
+  const mealDraft = mealDrafts[date] ?? records[date]?.mealNotes ?? '';
   const disabled = !ready || saving;
   const openSource = (url: string) => Linking.openURL(url).catch(() => setError('Could not open this source. Check your connection and try again.'));
 
@@ -85,14 +91,14 @@ export default function App() {
           <Text style={styles.eyebrow}>TRYRAMADAN · YOUR DAILY COMPANION</Text>
           <Text accessibilityRole="header" style={styles.heading}>{tab === 'Today' ? 'A little intention.\nA meaningful day.' : tab}</Text>
           <Text style={styles.body}>{date} · {dayNumber ? `Ramadan day ${dayNumber} (estimated)` : 'Make space for reflection'}</Text>
-          <View accessibilityRole="tablist" style={styles.tabs}>
-            {(['Today', 'Journal', 'Learn'] as const).map((name) => (
+          <ScrollView horizontal accessibilityRole="tablist" contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
+            {(['Today', 'Journal', 'Meals', 'Progress', 'Quran', 'Learn', 'Settings'] as const).map((name) => (
               <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: tab === name }}
                 onPress={() => { setTab(name); if (name === 'Journal') setJournalDate(date); setMessage(''); }} style={[styles.tab, tab === name && styles.activeTab]}>
                 <Text style={tab === name ? styles.activeText : styles.tabText}>{name}</Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
           {message ? <Text accessibilityLiveRegion="polite" style={styles.body}>{message}</Text> : null}
           {!ready && !error ? <Text style={styles.body}>Loading your saved entries…</Text> : null}
@@ -133,6 +139,35 @@ export default function App() {
             ))}
           </View> : null}
 
+          {tab === 'Meals' ? <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>Meal notes</Text>
+            <Text style={styles.body}>Plan Suhoor and Iftar without requiring a connection. Confirm dietary and medical needs with an appropriate professional.</Text>
+            <TextInput accessibilityLabel="Meal notes for today" multiline editable={!disabled} value={mealDraft}
+              onChangeText={(value) => setMealDrafts((prev) => ({ ...prev, [date]: value }))}
+              placeholder="Suhoor, Iftar, hydration, groceries…" placeholderTextColor="#617367" maxLength={10000}
+              textAlignVertical="top" style={styles.input} />
+            <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }}
+              onPress={() => saveDay({ mealNotes: mealDraft })} style={[styles.button, disabled && styles.disabled]}>
+              <Text style={styles.activeText}>{saving ? 'Saving…' : 'Save meal notes'}</Text>
+            </Pressable>
+          </View> : null}
+
+          {tab === 'Progress' ? <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>Your recorded days</Text>
+            <Text style={styles.metric}>{completed}</Text><Text style={styles.body}>completed fasts</Text>
+            <Text style={styles.caption}>{fasting} in progress · {notFasting} not fasting · {Object.keys(records).length} days with saved data</Text>
+            {Object.entries(records).sort(([a], [b]) => b.localeCompare(a)).slice(0, 30).map(([key, entry]) => (
+              <View key={key} style={styles.history}><Text style={styles.eyebrow}>{key}</Text><Text style={styles.body}>{entry.status ?? 'Notes only'}{entry.journal ? ' · journal' : ''}{entry.mealNotes ? ' · meals' : ''}</Text></View>
+            ))}
+          </View> : null}
+
+          {tab === 'Quran' ? <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>Read the Quran</Text>
+            <Text style={styles.body}>Open a trusted Quran reader for Arabic text, translations and audio. Reading requires a connection unless your browser or Quran app has cached it.</Text>
+            <Pressable accessibilityRole="link" onPress={() => openSource('https://quran.com/2/183-187')} style={styles.source}><Text style={styles.link}>Fasting verses · Quran 2:183–187 ↗</Text></Pressable>
+            <Pressable accessibilityRole="link" onPress={() => openSource('https://quran.com/')} style={styles.source}><Text style={styles.link}>Open Quran.com ↗</Text></Pressable>
+          </View> : null}
+
           {tab === 'Learn' ? <>
             <Text style={styles.body}>{guidanceNotice}</Text>
             {fastingGuidance.map((item) => <View key={item.id} style={styles.card}>
@@ -143,6 +178,12 @@ export default function App() {
               </Pressable>
             </View>)}
           </> : null}
+          {tab === 'Settings' ? <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>Data and privacy</Text>
+            <Text style={styles.body}>Entries are stored only on this device. This Expo app does not sync with the web app and has no account or cloud backup.</Text>
+            <Text style={styles.body}>Prayer-time location, notifications, imports and exports are not available in this companion yet. Use your local mosque or a trusted prayer service for Fajr and Maghrib.</Text>
+            <Text style={styles.caption}>Storage format: {STORAGE_KEY}</Text>
+          </View> : null}
           <Text style={styles.caption}>If fasting may harm you, seek medical advice. This app does not assess whether it is safe for you to fast.</Text>
         </ScrollView>
       </SafeAreaView>
@@ -156,8 +197,8 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#43604c', fontSize: 11, fontWeight: '700', letterSpacing: 1.8 },
   heading: { fontSize: 36, lineHeight: 42, color: '#173e2d', fontWeight: '700' },
   body: { fontSize: 16, lineHeight: 25, color: '#354c40' },
-  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 6 },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 24, borderWidth: 1, borderColor: '#b7c7b8' },
+  tabs: { gap: 8, paddingVertical: 6 },
+  tab: { minWidth: 104, minHeight: 48, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 24, borderWidth: 1, borderColor: '#b7c7b8' },
   activeTab: { backgroundColor: '#173e2d', borderColor: '#173e2d' },
   tabText: { color: '#173e2d', fontWeight: '600' },
   activeText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
@@ -171,4 +212,5 @@ const styles = StyleSheet.create({
   source: { minHeight: 44, justifyContent: 'center' },
   link: { color: '#245c42', textDecorationLine: 'underline', fontSize: 14 },
   error: { color: '#982e2e', fontSize: 15, lineHeight: 23 },
+  metric: { color: '#173e2d', fontSize: 44, lineHeight: 50, fontWeight: '700' },
 });

@@ -196,6 +196,20 @@ describe("today prayer times cache (local storage after initial call)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
+
+  it("clears previously shown times when the location is removed", async () => {
+    const todayStr = toLocalDateString(new Date());
+    localStorage.setItem(PRAYER_TIMES_CACHE_KEY, JSON.stringify({
+      dateStr: todayStr, lat: 1, lng: 2, method: 2,
+      prayerTimes: { fajr: "05:00", sunrise: "", dhuhr: "", asr: "", maghrib: "18:00", isha: "", imsak: "", date: "" },
+      hijriDate: { day: "1", month: "Ramadan", monthAr: "رمضان", year: "1448" }, savedAt: new Date().toISOString(),
+    }));
+    const { result, rerender } = renderHook(({ lat, lng }) => usePrayerTimes(lat, lng), { initialProps: { lat: 1 as number | null, lng: 2 as number | null } });
+    await waitFor(() => expect(result.current.prayerTimes?.fajr).toBe("05:00"));
+    rerender({ lat: null, lng: null });
+    await waitFor(() => expect(result.current.prayerTimes).toBeNull());
+    expect(result.current.loading).toBe(false);
+  });
 });
 
 describe("Ramadan prayer times cache", () => {

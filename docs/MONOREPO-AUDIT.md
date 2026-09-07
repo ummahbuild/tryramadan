@@ -65,7 +65,7 @@ The interface now explicitly distinguishes educational summaries from individual
 
 ### Outstanding release gates
 
-1. **Native feature parity:** prayer timetable/location configuration, Quran reading, meals/recipes/macros, detailed scheduling, qada, habits, notifications, achievements, settings, onboarding and exports remain in the web app only. Do not market the companion as a full port.
+1. **Native feature parity:** Expo now has local meal notes, saved-record progress, Quran source links and a privacy/gaps Settings screen in addition to Today, Journal and Learn. Prayer timetable/location configuration, embedded Quran reading/tracking, recipes/macros, detailed scheduling, qada, habits, notifications, achievements, preference controls, onboarding, import/export and web-data migration remain web-only or incomplete. Do not market the companion as a full port.
 2. **Legacy regression suite:** investigate remaining hangs and failures individually. Do not silence failures or weaken assertions just to mark the audit green. Existing broad integration tests include stale UI assumptions and real-network behavior; product versus harness issues need separate verification.
 3. **Qualified full-corpus review:** verify every quotation, attribution, Arabic term and school-specific ruling. Audit prohibited fasting days, missed-fast compensation, intention, and all health copy beyond the reviewed cards. Future Ramadan dates are estimates, not sighting declarations.
 4. **Real devices:** test iOS/Android launch, large text/screen readers, suspend/resume, midnight, storage failures and upgrades. Native signing, application identifiers, privacy disclosures and store submission are not configured here.

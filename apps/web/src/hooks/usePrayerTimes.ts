@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toLocalDateString } from '@/lib/utils';
 import { getRamadanDateRange, type RamadanOverrideInput } from '@/lib/ramadan';
 import { API_CONFIG } from '@/lib/config';
@@ -148,6 +148,8 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFromCache, setIsFromCache] = useState(false);
+  const requestSequence = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const todayStrLocal = useTodayStr();
   const [todayStrInTz, setTodayStrInTz] = useState(() =>
     displayTimezone ? getTodayStrInTimezone(displayTimezone) : todayStrLocal
@@ -163,6 +165,11 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
 
   const fetchPrayerTimes = useCallback(async () => {
     if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const sequence = ++requestSequence.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
     setLoading(true);
     setError(null);
     setIsFromCache(false);
@@ -171,11 +178,13 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
       const date = new Date(y, m - 1, d);
       const dateStr = toAladhanDateStr(date);
       const response = await fetch(
-        `${API_CONFIG.aladhan}/v1/timings/${dateStr}?latitude=${lat}&longitude=${lng}&method=${method}`
+        `${API_CONFIG.aladhan}/v1/timings/${dateStr}?latitude=${lat}&longitude=${lng}&method=${method}`,
+        { signal: controller.signal }
       );
       if (!response.ok) throw new Error('Failed to fetch prayer times');
       const data: AladhanResponse = await response.json();
-      if (data.code === 200) {
+      if (data.code !== 200) throw new Error('Prayer-time service returned an unexpected response');
+      if (sequence === requestSequence.current) {
         const t = data.data.timings;
         const pt = {
           fajr: stripTimeSuffix(t.Fajr ?? ''),
@@ -198,6 +207,7 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
         writePrayerTimesCache(todayStr, lat, lng, method, pt, hd);
       }
     } catch (err) {
+      if (sequence !== requestSequence.current) return;
       console.error('Prayer times error:', err);
       const cached = readPrayerTimesCache(todayStr, lat, lng, method);
       if (cached) {
@@ -206,17 +216,34 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
         setIsFromCache(true);
         setError('Times may be outdated. Check connection and try again.');
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to load prayer times');
+        setError(err instanceof DOMException && err.name === 'AbortError' ? 'Prayer-time request timed out. Try again.' : err instanceof Error ? err.message : 'Failed to load prayer times');
       }
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeout);
+      if (sequence === requestSequence.current) {
+        setLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     }
   }, [lat, lng, todayStr, method]);
 
   useEffect(() => {
-    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      requestSequence.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setPrayerTimes(null);
+      setHijriDate(null);
+      setLoading(false);
+      setError(null);
+      setIsFromCache(false);
+      return;
+    }
     const cached = readPrayerTimesCache(todayStr, lat, lng, method);
     if (cached) {
+      requestSequence.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
       setPrayerTimes(cached.prayerTimes);
       setHijriDate(cached.hijriDate);
       setIsFromCache(true);
@@ -233,6 +260,11 @@ export function usePrayerTimes(lat: number | null, lng: number | null, displayTi
       else clearTimeout(id as number);
     };
   }, [lat, lng, todayStr, method, fetchPrayerTimes]);
+
+  useEffect(() => () => {
+    requestSequence.current += 1;
+    abortRef.current?.abort();
+  }, []);
 
   return { prayerTimes, hijriDate, loading, error, refetch: fetchPrayerTimes, isFromCache };
 }

@@ -27,9 +27,14 @@ import { toast } from "sonner";
 
 export default function RecipeDetail() {
   const { mealType, id } = useParams<{ mealType: string; id: string }>();
+  return <RecipeDetailContent key={`${mealType}/${id}`} />;
+}
+
+function RecipeDetailContent() {
+  const { mealType, id } = useParams<{ mealType: string; id: string }>();
   const iftarLabel = useIftarLabel();
-  const meal = mealType as MealType | undefined;
-  const recipeId = id ? parseInt(id, 10) : NaN;
+  const meal: MealType | undefined = mealType === "suhoor" || mealType === "iftar" ? mealType : undefined;
+  const recipeId = id && /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) ? Number(id) : NaN;
 
   const result = meal && !isNaN(recipeId) ? getRecipeWithType(meal, recipeId) : undefined;
   const recipe = result?.recipe;

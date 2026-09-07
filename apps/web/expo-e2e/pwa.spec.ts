@@ -50,3 +50,30 @@ test('mobile layout, source links and unsaved drafts remain usable', async ({ pa
   await expect(page.getByRole('link')).toHaveCount(4);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('meal notes, progress, Quran and privacy sections work across reloads', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Meals' }).click();
+  await page.getByRole('textbox', { name: 'Meal notes for today' }).fill('Oats for Suhoor; soup for Iftar.');
+  await page.getByRole('button', { name: 'Save meal notes' }).click();
+  await page.reload();
+  await page.getByRole('tab', { name: 'Meals' }).click();
+  await expect(page.getByRole('textbox', { name: 'Meal notes for today' })).toHaveValue('Oats for Suhoor; soup for Iftar.');
+  await page.getByRole('tab', { name: 'Progress' }).click();
+  await expect(page.getByText('1 days with saved data')).toBeVisible();
+  await page.getByRole('tab', { name: 'Quran' }).click();
+  await expect(page.getByRole('link', { name: /Fasting verses/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await expect(page.getByText(/does not sync with the web app/i)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('unsupported meal-note storage shapes are protected from overwrite', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('tryramadan-native-days-v1', JSON.stringify({
+    '2026-09-04': { mealNotes: ['unexpected'] },
+  })));
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('No saved data has been overwritten');
+  await expect(page.getByRole('button', { name: 'Record completed fast' })).toBeDisabled();
+});
