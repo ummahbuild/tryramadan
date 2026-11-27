@@ -36,6 +36,7 @@ export default function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [mealDrafts, setMealDrafts] = useState<Record<string, string>>({});
   const [journalDate, setJournalDate] = useState(todayKey);
+  const [mealDate, setMealDate] = useState(todayKey);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
@@ -80,7 +81,7 @@ export default function App() {
   const completed = Object.values(records).filter((entry) => entry.status === 'completed').length;
   const fasting = Object.values(records).filter((entry) => entry.status === 'fasting').length;
   const notFasting = Object.values(records).filter((entry) => entry.status === 'not-fasting').length;
-  const mealDraft = mealDrafts[date] ?? records[date]?.mealNotes ?? '';
+  const mealDraft = mealDrafts[mealDate] ?? records[mealDate]?.mealNotes ?? '';
   const disabled = !ready || saving;
   const openSource = (url: string) => Linking.openURL(url).catch(() => setError('Could not open this source. Check your connection and try again.'));
 
@@ -94,7 +95,7 @@ export default function App() {
           <ScrollView horizontal accessibilityRole="tablist" contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
             {(['Today', 'Journal', 'Meals', 'Progress', 'Quran', 'Learn', 'Settings'] as const).map((name) => (
               <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: tab === name }}
-                onPress={() => { setTab(name); if (name === 'Journal') setJournalDate(date); setMessage(''); }} style={[styles.tab, tab === name && styles.activeTab]}>
+                onPress={() => { setTab(name); if (name === 'Journal') setJournalDate(date); if (name === 'Meals' && tab !== 'Meals') setMealDate(date); setMessage(''); }} style={[styles.tab, tab === name && styles.activeTab]}>
                 <Text style={tab === name ? styles.activeText : styles.tabText}>{name}</Text>
               </Pressable>
             ))}
@@ -142,12 +143,16 @@ export default function App() {
           {tab === 'Meals' ? <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.cardTitle}>Meal notes</Text>
             <Text style={styles.body}>Plan Suhoor and Iftar without requiring a connection. Confirm dietary and medical needs with an appropriate professional.</Text>
-            <TextInput accessibilityLabel="Meal notes for today" multiline editable={!disabled} value={mealDraft}
-              onChangeText={(value) => setMealDrafts((prev) => ({ ...prev, [date]: value }))}
+            <Text style={styles.caption}>Meal notes for {mealDate}</Text>
+            {mealDate !== date ? <Pressable accessibilityRole="button" onPress={() => { setMealDate(date); setMessage(''); }} style={styles.tab}>
+              <Text style={styles.tabText}>Switch to today’s meal notes</Text>
+            </Pressable> : null}
+            <TextInput accessibilityLabel={mealDate === date ? 'Meal notes for today' : `Meal notes for ${mealDate}`} multiline editable={!disabled} value={mealDraft}
+              onChangeText={(value) => setMealDrafts((prev) => ({ ...prev, [mealDate]: value }))}
               placeholder="Suhoor, Iftar, hydration, groceries…" placeholderTextColor="#617367" maxLength={10000}
               textAlignVertical="top" style={styles.input} />
             <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }}
-              onPress={() => saveDay({ mealNotes: mealDraft })} style={[styles.button, disabled && styles.disabled]}>
+              onPress={() => saveDay({ mealNotes: mealDraft }, mealDate)} style={[styles.button, disabled && styles.disabled]}>
               <Text style={styles.activeText}>{saving ? 'Saving…' : 'Save meal notes'}</Text>
             </Pressable>
           </View> : null}

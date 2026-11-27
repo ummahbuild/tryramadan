@@ -77,3 +77,25 @@ test('unsupported meal-note storage shapes are protected from overwrite', async 
   await expect(page.getByRole('alert')).toContainText('No saved data has been overwritten');
   await expect(page.getByRole('button', { name: 'Record completed fast' })).toBeDisabled();
 });
+
+test('an open meal draft stays on its original local date through midnight', async ({ page }) => {
+  // Local constructor intentionally exercises the user's local date, not UTC.
+  await page.clock.install({ time: new Date(2026, 10, 27, 23, 59, 50) });
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Meals' }).click();
+  await page.getByRole('textbox', { name: 'Meal notes for today' }).fill('Before midnight');
+  await page.clock.fastForward(35_000);
+  await expect(page.getByRole('textbox', { name: 'Meal notes for 2026-11-27' })).toHaveValue('Before midnight');
+  await page.getByRole('button', { name: 'Save meal notes' }).click();
+  await expect(page.getByText('Saved on this device.')).toBeVisible();
+  await page.getByRole('button', { name: 'Switch to today’s meal notes' }).click();
+  await expect(page.getByRole('textbox', { name: 'Meal notes for today' })).toHaveValue('');
+  await page.getByRole('textbox', { name: 'Meal notes for today' }).fill('After midnight');
+  await page.getByRole('button', { name: 'Save meal notes' }).click();
+  await expect(page.getByText('Saved on this device.')).toBeVisible();
+  const days = await page.evaluate(() => JSON.parse(localStorage.getItem('tryramadan-native-days-v1') ?? '{}'));
+  expect(days).toEqual({
+    '2026-11-27': { mealNotes: 'Before midnight' },
+    '2026-11-28': { mealNotes: 'After midnight' },
+  });
+});
